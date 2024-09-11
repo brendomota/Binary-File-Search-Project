@@ -42,11 +42,10 @@ int main() {
     fclose(fd);
     
     //////////////////////////////
-	const int quantidade = 5;
-    char nomes[quantidade][50] = {"Nome-1", "Nome-2", "Nome-X", "Nome-1", "Nome-3"};
+    char nomes[5][50] = {"Nome-1", "Nome-2", "Nome-X", "Nome-1", "Nome-3"};
        
     fd = fopen("busca_s.bin", "w+b");
-    for (int i=0; i<quantidade; i++)
+    for (int i=0; i<5; i++)
        fwrite(nomes[i], sizeof(char), 50, fd);
     fclose(fd);
     
