@@ -37,7 +37,7 @@ int pegar_tamanho_reg(FILE *fd, char *registro)
 }
 
 /*---------FUNÇÃO PARA INSERIR UM REGISTRO NO ARQUIVO----------*/
-void inserir_registro(FILE *in, FILE *in_aux, FILE *out)
+void inserir_registro(FILE *in, FILE *in_aux, FILE *out, FILE *indice_p)
 {
     // Variáveis que serão utilizadas na inserção
     historico hist;
@@ -74,12 +74,65 @@ void inserir_registro(FILE *in, FILE *in_aux, FILE *out)
     byte_in_aux += 116;
     fwrite(&byte_in_aux, sizeof(int), 1, in_aux);
     rewind(in_aux);
+
+    // Atualizar o cabeçalho do arquivo de índice primário
+    rewind(indice_p);
+    int cabecalho_p = 0;
+    fwrite(&cabecalho_p, sizeof(int), 1, indice_p);
+}
+
+/*--------FUNÇÃO PARA ATUALIZAR O ARQUIVO DE ÍNDICE PRIMÁRIO---------*/
+void atualizar_indice(FILE *out, FILE *indice_p)
+{
+    busca_p indice;
+    int cabecalho_p;
+    int byte_offset;
+    char registro[120];
+    int tam_reg;
+    char pegar_chave[20];
+
+    int tam_vetor = 0;
+
+    rewind(out);
+    rewind(indice_p);
+
+    fread(&cabecalho_p, sizeof(int), 1, indice_p);
+    if (cabecalho_p == 0)
+    {
+        printf("Recriar o arquivo de indice dezatualizado");
+        rewind(indice_p);
+
+        fseek(out, sizeof(int), 0);
+        byte_offset = ftell(out);
+        tam_reg = pegar_tamanho_reg(out, registro);
+        fread(&indice, sizeof(indice), 1, out);
+        sprintf(pegar_chave, "%s%s", indice.id_aluno, indice.sigla_disc);
+        int tam_chave = strlen(pegar_chave);
+        tam_chave++;
+        pegar_chave[tam_chave] = '\0';
+
+        tam_vetor++;
+
+        while (tam_reg > 0)
+        {
+            fseek(out, sizeof(int), 0);
+            byte_offset = ftell(out);
+            tam_reg = pegar_tamanho_reg(out, registro);
+            fread(&indice, sizeof(indice), 1, out);
+            sprintf(pegar_chave, "%s%s", indice.id_aluno, indice.sigla_disc);
+            int tam_chave = strlen(pegar_chave);
+            tam_chave++;
+            pegar_chave[tam_chave] = '\0';
+
+            tam_vetor++;
+        }
+    }
 }
 
 /*--------FUNÇÃO PARA BUSCA PRIMÁRIA UM REGISTRO---------*/
 void busca_p_registro(FILE *re, FILE *re_aux, FILE *out)
 {
-    busca_p remove;
+    busca_p buscar;
     int byte_re_aux;
     int tam_reg;
     int cabecalho;
@@ -91,9 +144,9 @@ void busca_p_registro(FILE *re, FILE *re_aux, FILE *out)
     char pegar_chave[20];
     fread(&byte_re_aux, sizeof(int), 1, re_aux);
     fseek(re, byte_re_aux, 0);
-    fread(&remove, sizeof(remove), 1, re);
+    fread(&buscar, sizeof(buscar), 1, re);
 
-    sprintf(pegar_chave, "%s%s", remove.id_aluno, remove.sigla_disc);
+    sprintf(pegar_chave, "%s%s", buscar.id_aluno, buscar.sigla_disc);
 
     int offset_aux = ftell(out);
     tam_reg = pegar_tamanho_reg(out, registro);
@@ -170,7 +223,7 @@ void busca_p_registro(FILE *re, FILE *re_aux, FILE *out)
 
     if (chave_encontrada == 0)
     {
-        printf("\nA chave nao foi encontrada e a proxima remocao acontecera com a chave seguinte a esta no arquivo remove.bin.");
+        printf("\nA chave nao foi encontrada e a proxima remocao acontecera com a chave seguinte a esta no arquivo buscar.bin.");
     }
 
     // Atualiza o arquivo re_aux
@@ -183,6 +236,7 @@ void busca_p_registro(FILE *re, FILE *re_aux, FILE *out)
 int main()
 {
     int cabecalho;
+    int cabecalho_p;
 
     /*--------CRIAÇÃO DOS PONTEIROS DOS ARQUIVOS---------*/
 
@@ -318,12 +372,28 @@ int main()
         out = fopen("out.bin", "w+b");
         if (out == NULL)
         {
-            printf("\nNao foi possivel criar o arquivo auxiliar de insersao");
+            printf("\nNao foi possivel criar o arquivo de saida");
             return 0;
         }
         cabecalho = -1;
         fwrite(&cabecalho, sizeof(int), 1, out);
     }
+
+    // Arquivo de índice primário
+    FILE *indice_p = fopen("indice_p.bin", "r+b"); // Estamos usando r+b pois ela não permite truncamento (não zera o tamanho)
+    if (indice_p == NULL)
+    {
+        // Arquivo ainda não existe, tem que ser criado com w+b
+        indice_p = fopen("indice_p.bin", "w+b");
+        if (indice_p == NULL)
+        {
+            printf("\nNao foi possivel criar o arquivo de indice primario");
+            return 0;
+        }
+        cabecalho_p = 0;
+        fwrite(&cabecalho_p, sizeof(int), 1, indice_p);
+    }
+
     /*----------MENU PARA INTERAÇÃO COM O PROGRAMA----------*/
     printf("\n----------MENU----------");
     printf("\n1. Inserir");
@@ -345,7 +415,7 @@ int main()
         /*----------OPERAÇÃO DE INSERIR NO ARQUIVO OUT.BIN----------*/
         if (opcao == 1)
         {
-            inserir_registro(in, in_aux, out);
+            inserir_registro(in, in_aux, out, indice_p);
             printf("\nINSERCAO REALIZADA COM SUCESSO");
         }
 
@@ -373,6 +443,10 @@ int main()
     fclose(in);
     fclose(out);
     fclose(in_aux);
+    fclose(busca_p);
+    fclose(busca_p_aux);
+    fclose(busca_s);
+    fclose(busca_s_aux);
 
     return 0;
 }
