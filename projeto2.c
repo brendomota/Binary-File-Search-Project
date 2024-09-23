@@ -21,8 +21,10 @@ typedef struct
 
 typedef struct
 {
-    char nome_aluno[50];
-} busca_s;
+    char elem_id_aluno[4];
+    char elem_sigla_disc[4];
+    int elem_deslocamento;
+} elem_vetor;
 
 /*----------FUNÇÃO QUE RETORNA O TAMANHO DO REGISTRO A SER LIDO----------*/
 int pegar_tamanho_reg(FILE *fd, char *registro)
@@ -69,7 +71,7 @@ void inserir_registro(FILE *in, FILE *in_aux, FILE *out, FILE *indice_p)
     // Verifica se o cabeçalho é igual a -1, para adicionar no último byte do arquivo out.bin
     if (cabecalho == -1)
     {
-        fseek(out, 0, 2);
+        fseek(out, 0, SEEK_END);
         fwrite(&tam_reg, sizeof(int), 1, out);
         fwrite(registro, sizeof(char), tam_reg, out);
     }
@@ -80,162 +82,195 @@ void inserir_registro(FILE *in, FILE *in_aux, FILE *out, FILE *indice_p)
     fwrite(&byte_in_aux, sizeof(int), 1, in_aux);
     rewind(in_aux);
 
-    // Atualizar o cabeçalho do arquivo de índice primário
+    int cabecalho_indice = 0;
+
     rewind(indice_p);
-    int cabecalho_p = 0;
-    fwrite(&cabecalho_p, sizeof(int), 1, indice_p);
+    fwrite(&cabecalho_indice, sizeof(int), 1, indice_p);
 }
 
-/*--------FUNÇÃO PARA ATUALIZAR O ARQUIVO DE ÍNDICE PRIMÁRIO---------*/
-void atualizar_indice(FILE *out, FILE *indice_p)
+/*--------FUNÇÃO PARA RECRIAR ARQUIVO DE ÍNDICE---------*/
+void recriar_indice(FILE *indice_p, FILE *out)
 {
-    busca_p indice;
-    int cabecalho_p;
-    int byte_offset;
-    char registro[120];
-    int tam_reg;
-    char pegar_chave[20];
+    int size = 0;
+    elem_vetor vetor[100]; // Inicializa um vetor com capacidade para 100 elementos (ajuste conforme necessário)
 
-    int tam_vetor = 0;
+    int cabecalho_indice;
 
-    rewind(out);
-    rewind(indice_p);
+    int deslocamento;
+    elem_vetor element;
+    int tam;
+    char buffer_hashtag[2];
 
-    fread(&cabecalho_p, sizeof(int), 1, indice_p);
-    if (cabecalho_p == 0)
+    fseek(out, sizeof(int), SEEK_SET);       // Pular o cabeçalho do arquivo
+
+    while (fread(&tam, sizeof(int), 1, out)) // Lê o tamanho do registro
     {
-        printf("Recriar o arquivo de indice dezatualizado");
-        rewind(indice_p);
+        // Atualizar o deslocamento
+        deslocamento = ftell(out) - sizeof(int);
 
-        fseek(out, sizeof(int), 0);
-        byte_offset = ftell(out);
-        tam_reg = pegar_tamanho_reg(out, registro);
-        fread(&indice, sizeof(indice), 1, out);
-        sprintf(pegar_chave, "%s%s", indice.id_aluno, indice.sigla_disc);
-        int tam_chave = strlen(pegar_chave);
-        tam_chave++;
-        pegar_chave[tam_chave] = '\0';
+        // Ler a chave primária (Código de aluno e Sigla da disciplina)
+        fread(element.elem_id_aluno, sizeof(char), 3, out); // Lê 3 caracteres do código do aluno
+        element.elem_id_aluno[3] = '\0'; // Adiciona o terminador de string
+        printf("\nElemento.id: %s", element.elem_id_aluno);
 
-        tam_vetor++;
+        fread(buffer_hashtag, sizeof(char), 1, out); // Ignorar o '#'
 
-        while (tam_reg > 0)
+        fread(element.elem_sigla_disc, sizeof(char), 3, out); // Lê 3 caracteres da sigla da disciplina
+        element.elem_sigla_disc[3] = '\0'; // Adiciona o terminador de string
+        printf("\nElemento.sigla: %s", element.elem_sigla_disc);
+
+        // Armazena o deslocamento do registro
+        element.elem_deslocamento = deslocamento;
+
+        // Inserir o elemento no vetor de forma ordenada
+        int i = size - 1;
+        while (i >= 0 && (strcmp(vetor[i].elem_id_aluno, element.elem_id_aluno) > 0 ||
+                          (strcmp(vetor[i].elem_id_aluno, element.elem_id_aluno) == 0 &&
+                           strcmp(vetor[i].elem_sigla_disc, element.elem_sigla_disc) > 0)))
         {
-            fseek(out, sizeof(int), 0);
-            byte_offset = ftell(out);
-            tam_reg = pegar_tamanho_reg(out, registro);
-            fread(&indice, sizeof(indice), 1, out);
-            sprintf(pegar_chave, "%s%s", indice.id_aluno, indice.sigla_disc);
-            int tam_chave = strlen(pegar_chave);
-            tam_chave++;
-            pegar_chave[tam_chave] = '\0';
-
-            tam_vetor++;
+            vetor[i + 1] = vetor[i]; // Desloca os elementos para a direita
+            i--;
         }
+        vetor[i + 1] = element; // Insere o elemento na posição correta
+        size++;
+
+        // Pular o restante do registro (tam - (tamanho da chave + delimitadores))
+        fseek(out, tam - (3 + 1 + 3), SEEK_CUR); // 3 (ID aluno) + 1 (#) + 3 (Sigla)
     }
+
+    // Escrever o vetor ordenado no arquivo de índice
+    fseek(indice_p, sizeof(int), SEEK_SET);
+    for (int pos = 0; pos < size; pos++)
+    {
+        fwrite(vetor[pos].elem_id_aluno, sizeof(char), 3, indice_p);       // Escreve o ID do aluno
+        fwrite(vetor[pos].elem_sigla_disc, sizeof(char), 3, indice_p);     // Escreve a sigla da disciplina
+        fwrite(&(vetor[pos].elem_deslocamento), sizeof(int), 1, indice_p); // Escreve o deslocamento
+    }
+
+    // Escrever o cabeçalho do índice
+    cabecalho_indice = 1;
+    rewind(indice_p);
+    fwrite(&cabecalho_indice, sizeof(int), 1, indice_p);
+    rewind(indice_p);
 }
+
 
 /*--------FUNÇÃO PARA BUSCA PRIMÁRIA UM REGISTRO---------*/
-void busca_p_registro(FILE *re, FILE *re_aux, FILE *out)
+void busca_p_registro(FILE *indice_p, FILE *busca_primaria, FILE *busca_p_aux, FILE *out)
 {
-    busca_p buscar;
-    int byte_re_aux;
-    int tam_reg;
-    int cabecalho;
-    char registro[120];
+    rewind(indice_p);
 
-    rewind(out);
-    fread(&cabecalho, sizeof(int), 1, out);
-
+    // Estamos pegando a chave para ser lida
     char pegar_chave[20];
-    fread(&byte_re_aux, sizeof(int), 1, re_aux);
-    fseek(re, byte_re_aux, 0);
-    fread(&buscar, sizeof(buscar), 1, re);
+    int byte_busca_p_aux;
+    busca_p busca;
+    fread(&byte_busca_p_aux, sizeof(int), 1, busca_p_aux);
+    fseek(busca_primaria, byte_busca_p_aux, 0);
+    fread(&busca, sizeof(busca), 1, busca_primaria);
+    sprintf(pegar_chave, "%s%s", busca.id_aluno, busca.sigla_disc);
 
-    sprintf(pegar_chave, "%s%s", buscar.id_aluno, buscar.sigla_disc);
+    printf("\nChave que iremos buscar: %s", pegar_chave);
 
-    int offset_aux = ftell(out);
-    tam_reg = pegar_tamanho_reg(out, registro);
-    char *ptrchar;
-    int offset_byte = offset_aux;
+    int deslocamento;
+    int cabecalho_indice;
+    char chave[6];
 
-    int chave_encontrada = 0; // Flag para ver se a chave foi encontrada ou não
+    fread(&cabecalho_indice, sizeof(int), 1, indice_p);
 
-    while (tam_reg > 0)
+    printf("\nCabecalho: %d", cabecalho_indice);
+
+    int flag_encontrou = 0;
+    if (cabecalho_indice == 1)
     {
-        char reg_aux[120];
-        char registro_copy[120];         // Cria uma cópia para o strtok
-        strcpy(registro_copy, registro); // Copia o conteúdo de registro
-
-        reg_aux[0] = '\0';
-        ptrchar = strtok(registro_copy, "#");
-
-        while (ptrchar != NULL)
+        fseek(indice_p, sizeof(int), SEEK_SET);
+        while (fread(&chave, sizeof(char), 6, indice_p))
         {
-            strcat(reg_aux, ptrchar);
-            ptrchar = strtok(NULL, "#");
+            printf("\nChave que estamos vendo: %s", chave);
+            chave[6] = '\0';
+            if (strcmp(pegar_chave, chave) == 0)
+            {
+                fread(&deslocamento, sizeof(int), 1, indice_p);
+                flag_encontrou = 1;
+                printf("\nChave encontrada: %s", chave);
+                break;
+            }
+            fread(&deslocamento, sizeof(int), 1, indice_p);
         }
 
-        if (strstr(reg_aux, pegar_chave) != NULL)
+        if (flag_encontrou == 0)
         {
-            printf("\nRegistro que sera removido: %s", reg_aux);
-            int tamanho_bytes_registro = tam_reg;
-            char *estrela = "*";
-            int offset_proximo_registro = cabecalho;
-
-            fseek(out, offset_byte, 0);
-            cabecalho = offset_byte;
-
-            fwrite(&tamanho_bytes_registro, sizeof(int), 1, out);
-            fwrite(estrela, sizeof(char), 1, out);
-            fwrite(&offset_proximo_registro, sizeof(int), 1, out);
-
-            // Volta para o início para escrever o cabeçalho
-            fseek(out, 0, SEEK_SET);
-            fwrite(&offset_byte, sizeof(int), 1, out);
-            chave_encontrada = 1;
-            break;
+            printf("\nA chave nao foi encontrada");
         }
 
-        // Percorrer o lixo caso tenha
-        char buffer[200];
-        int offset_aux_ini = ftell(out);
-        offset_aux = ftell(out);
-        fread(&tam_reg, sizeof(int), 1, out); // Lê o tamanho do registro como int
-        int flagwhile = 0;
-
-        while (tam_reg <= 0 || tam_reg > sizeof(buffer))
-        {
-            flagwhile = 1;
-            printf("\nTamanho do registro em lixo: %d", tam_reg);
-
-            // Avança 1 byte, pois o tam_reg pode estar lendo lixo
-            fseek(out, ftell(out) - 3, SEEK_SET);
-            offset_aux = ftell(out);
-
-            // Lê o próximo byte e tenta interpretar como tamanho de registro
-            fread(&tam_reg, sizeof(int), 1, out); // Ler como int para manter consistência
-        }
-
-        // Se não encontramos lixo, voltamos ao ponto de leitura original
-        if (flagwhile == 0)
-            fseek(out, offset_aux_ini, SEEK_SET);
         else
-            fseek(out, offset_aux, SEEK_SET);
+        {
+            fseek(out, deslocamento, SEEK_SET);
 
-        tam_reg = pegar_tamanho_reg(out, registro);
-        offset_byte = ftell(out) - tam_reg - sizeof(int);
+            char registro[120];
+            int tam_reg = pegar_tamanho_reg(out, registro);
+            char *pch;
+            pch = strtok(registro, "#");
+            
+            printf("\nRegistro encontrado:\n");
+            while (pch != NULL)
+            {
+                printf("%s\n", pch);
+                // strcpy(teste,pch);
+                // printf("%s\n",teste);
+                pch = strtok(NULL, "#");
+            }
+            printf("\n");
+        }
     }
-
-    if (chave_encontrada == 0)
+    else
     {
-        printf("\nA chave nao foi encontrada e a proxima remocao acontecera com a chave seguinte a esta no arquivo buscar.bin.");
-    }
+        printf("\nVamos recriar o indice");
+        recriar_indice(indice_p, out);
 
-    // Atualiza o arquivo re_aux
-    rewind(re_aux);
-    byte_re_aux += 8;
-    fwrite(&byte_re_aux, sizeof(int), 1, re_aux);
-    rewind(re_aux);
+        fseek(indice_p, sizeof(int), SEEK_SET);
+        while (fread(&chave, sizeof(char), 6, indice_p))
+        {
+            printf("\nChave que estamos vendo: %s", chave);
+            chave[6] = '\0';
+            if (strcmp(pegar_chave, chave) == 0)
+            {
+                fread(&deslocamento, sizeof(int), 1, indice_p);
+                flag_encontrou = 1;
+                printf("\nChave encontrada: %s", chave);
+                break;
+            }
+            fread(&deslocamento, sizeof(int), 1, indice_p);
+        }
+
+        if (flag_encontrou == 0)
+        {
+            printf("\nA chave nao foi encontrada");
+        }
+
+        else
+        {
+            fseek(out, deslocamento, SEEK_SET);
+
+            char registro[120];
+            int tam_reg = pegar_tamanho_reg(out, registro);
+            char *pch;
+            pch = strtok(registro, "#");
+            
+            printf("\nRegistro encontrado:\n");
+            while (pch != NULL)
+            {
+                printf("%s\n", pch);
+                // strcpy(teste,pch);
+                // printf("%s\n",teste);
+                pch = strtok(NULL, "#");
+            }
+            printf("\n");
+        }
+    }
+    rewind(busca_p_aux);
+    byte_busca_p_aux += 8;
+    fwrite(&byte_busca_p_aux, sizeof(int), 1, busca_p_aux);
+    rewind(busca_p_aux);
 }
 
 int main()
@@ -253,17 +288,10 @@ int main()
         return 0;
     }
 
-    FILE *busca_p;
-    if (!(busca_p = fopen("busca_primaria.bin", "r+b")))
+    FILE *busca_primaria;
+    if (!(busca_primaria = fopen("busca_p.bin", "r+b")))
     {
         printf("\nNao foi possivel  abrir o arquivo busca_primaria.bin");
-        return 0;
-    }
-
-    FILE *busca_s;
-    if (!(busca_s = fopen("busca_secundaria.bin", "r+b")))
-    {
-        printf("\nNao foi possivel  abrir o arquivo busca_secundaria.bin");
         return 0;
     }
 
@@ -335,40 +363,6 @@ int main()
     }
     rewind(busca_p_aux);
 
-    /*----------CRIAÇÃO DO ARQUIVO QUE ARMAZENA O BYTE A SER LIDO NO ARQUIVO BUSCA_S.BIN----------*/
-    FILE *busca_s_aux;
-    int byte_busca_s_aux;
-
-    busca_s_aux = fopen("busca_s_aux.bin", "r+b");
-
-    // Se o arquivo não existir, cria-o com "w+b"
-    if (busca_s_aux == NULL)
-    {
-        // Arquivo ainda não existe, tem que ser criado com w+b
-        busca_s_aux = fopen("busca_s_aux.bin", "w+b");
-        if (busca_s_aux == NULL)
-        {
-            printf("\nNao foi possivel criar o arquivo auxiliar de remocao");
-            return 0;
-        }
-        // Como o arquivo é novo, consideramos que é a primeira inserção
-        byte_busca_s_aux = 0;
-        fwrite(&byte_busca_s_aux, sizeof(int), 1, busca_s_aux);
-    }
-    else
-    {
-        // Verifica se o arquivo está vazio
-        fseek(busca_s_aux, 0, SEEK_END);
-        long tam_busca_s_aux = ftell(busca_s_aux);
-
-        if (tam_busca_s_aux == 0)
-        {
-            byte_busca_s_aux = 0;
-            fwrite(&byte_busca_s_aux, sizeof(int), 1, busca_s_aux);
-        }
-    }
-    rewind(busca_s_aux);
-
     // Arquivo de saída
     FILE *out = fopen("out.bin", "r+b"); // Estamos usando r+b pois ela não permite truncamento (não zera o tamanho)
     if (out == NULL)
@@ -403,7 +397,6 @@ int main()
     printf("\n----------MENU----------");
     printf("\n1. Inserir");
     printf("\n2. Busca Primaria");
-    printf("\n3. Busca Secundaria");
     printf("\n4. Sair do Programa");
     int opcao = -1;
 
@@ -427,13 +420,8 @@ int main()
         /*---------OPERAÇÃO DE busca_p NO ARQUIVO OUT.BIN-----------*/
         if (opcao == 2)
         {
-            printf("\nREMOCAO REALIZADA COM SUCESSO");
-        }
-
-        /*---------OPERAÇÃO DE COMPACTAR O ARQUIVO OUT.BIN---------*/
-        if (opcao == 3)
-        {
-            printf("\nCOMPACTACAO REALIZADA COM SUCESSO");
+            busca_p_registro(indice_p, busca_primaria, busca_p_aux, out);
+            printf("\nBUSCA REALIZADA COM SUCESSO");
         }
 
         if (opcao == 4)
@@ -445,13 +433,13 @@ int main()
     }
 
     printf("\n----------PROGRAMA FINALIZADO----------");
+
     fclose(in);
-    fclose(out);
     fclose(in_aux);
-    fclose(busca_p);
+    fclose(busca_primaria);
     fclose(busca_p_aux);
-    fclose(busca_s);
-    fclose(busca_s_aux);
+    fclose(out);
+    fclose(indice_p);
 
     return 0;
 }
