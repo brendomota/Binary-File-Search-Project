@@ -19,6 +19,11 @@ typedef struct
     char sigla_disc[4];
 } busca_p;
 
+typedef struct
+{
+    char nome_aluno[50];
+} busca_s;
+
 /*----------FUNÇÃO QUE RETORNA O TAMANHO DO REGISTRO A SER LIDO----------*/
 int pegar_tamanho_reg(FILE *fd, char *registro)
 {
