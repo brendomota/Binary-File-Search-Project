@@ -42,7 +42,7 @@ int main() {
     fclose(fd);
     
     //////////////////////////////
-    char nomes[5][50] = {"Nome-1", "Nome-2", "Nome-X", "Nome-1", "Nome-3"};
+    char nomes[5][50] = {"Joao da Silva", "Paulo Souza", "Pedro", "Joao da Silva", "Lucas Silva e Silva"};
        
     fd = fopen("busca_s.bin", "w+b");
     for (int i=0; i<5; i++)
