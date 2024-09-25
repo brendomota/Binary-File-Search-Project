@@ -38,6 +38,12 @@ typedef struct
     int prox;
 } secundaria_chaves;
 
+typedef struct
+{
+    char nome[50];
+    char chave[7];
+} secundaria_element;
+
 /*----------FUNÇÃO QUE RETORNA O TAMANHO DO REGISTRO A SER LIDO----------*/
 int pegar_tamanho_reg(FILE *fd, char *registro)
 {
@@ -128,13 +134,11 @@ void recriar_indice(FILE *indice_p, FILE *out)
         // Ler a chave primária (Código de aluno e Sigla da disciplina)
         fread(element.elem_id_aluno, sizeof(char), 3, out); // Lê 3 caracteres do código do aluno
         element.elem_id_aluno[3] = '\0';                    // Adiciona o terminador de string
-        printf("\nElemento.id: %s", element.elem_id_aluno);
 
         fread(buffer_hashtag, sizeof(char), 1, out); // Ignorar o '#'
 
         fread(element.elem_sigla_disc, sizeof(char), 3, out); // Lê 3 caracteres da sigla da disciplina
         element.elem_sigla_disc[3] = '\0';                    // Adiciona o terminador de string
-        printf("\nElemento.sigla: %s", element.elem_sigla_disc);
 
         // Armazena o deslocamento do registro
         element.elem_deslocamento = deslocamento;
@@ -185,15 +189,11 @@ void busca_p_registro(FILE *indice_p, FILE *busca_primaria, FILE *busca_p_aux, F
     fread(&busca, sizeof(busca), 1, busca_primaria);
     sprintf(pegar_chave, "%s%s", busca.id_aluno, busca.sigla_disc);
 
-    printf("\nChave que iremos buscar: %s", pegar_chave);
-
     int deslocamento;
     int cabecalho_indice;
     char chave[6];
 
     fread(&cabecalho_indice, sizeof(int), 1, indice_p);
-
-    printf("\nCabecalho: %d", cabecalho_indice);
 
     int flag_encontrou = 0;
     if (cabecalho_indice == 1)
@@ -201,13 +201,11 @@ void busca_p_registro(FILE *indice_p, FILE *busca_primaria, FILE *busca_p_aux, F
         fseek(indice_p, sizeof(int), SEEK_SET);
         while (fread(&chave, sizeof(char), 6, indice_p))
         {
-            printf("\nChave que estamos vendo: %s", chave);
             chave[6] = '\0';
             if (strcmp(pegar_chave, chave) == 0)
             {
                 fread(&deslocamento, sizeof(int), 1, indice_p);
                 flag_encontrou = 1;
-                printf("\nChave encontrada: %s", chave);
                 break;
             }
             fread(&deslocamento, sizeof(int), 1, indice_p);
@@ -230,7 +228,7 @@ void busca_p_registro(FILE *indice_p, FILE *busca_primaria, FILE *busca_p_aux, F
             printf("\nRegistro encontrado:\n");
             while (pch != NULL)
             {
-                printf("%s\n", pch);
+                printf("%s#", pch);
                 // strcpy(teste,pch);
                 // printf("%s\n",teste);
                 pch = strtok(NULL, "#");
@@ -240,19 +238,16 @@ void busca_p_registro(FILE *indice_p, FILE *busca_primaria, FILE *busca_p_aux, F
     }
     else
     {
-        printf("\nVamos recriar o indice");
         recriar_indice(indice_p, out);
 
         fseek(indice_p, sizeof(int), SEEK_SET);
         while (fread(&chave, sizeof(char), 6, indice_p))
         {
-            printf("\nChave que estamos vendo: %s", chave);
             chave[6] = '\0';
             if (strcmp(pegar_chave, chave) == 0)
             {
                 fread(&deslocamento, sizeof(int), 1, indice_p);
                 flag_encontrou = 1;
-                printf("\nChave encontrada: %s", chave);
                 break;
             }
             fread(&deslocamento, sizeof(int), 1, indice_p);
@@ -289,83 +284,181 @@ void busca_p_registro(FILE *indice_p, FILE *busca_primaria, FILE *busca_p_aux, F
     rewind(busca_p_aux);
 }
 
+// Função para inserir um elemento no vetor de forma ordenada por nome
+void inserir_ordenado(secundaria_element vetor[], secundaria_element novo_elemento, int *num_elementos)
+{
+    int i, j;
+
+    // Encontra a posição correta para inserir o novo elemento (ordem alfabética)
+    for (i = 0; i < *num_elementos; i++)
+    {
+        if (strcmp(novo_elemento.nome, vetor[i].nome) < 0)
+        {
+            break;
+        }
+    }
+
+    // Desloca os elementos à frente para abrir espaço para o novo elemento
+    for (j = *num_elementos; j > i; j--)
+    {
+        vetor[j] = vetor[j - 1];
+    }
+
+    // Insere o novo elemento na posição correta
+    vetor[i] = novo_elemento;
+
+    // Incrementa o contador de elementos
+    (*num_elementos)++;
+}
+
+void recriar_indice_chave(const char *nome_arquivo)
+{
+    // Tentar remover o arquivo existente
+    remove(nome_arquivo);
+
+    
+    // Criar um novo arquivo "indice_s_chave"
+    FILE *indice_s_chave = fopen(nome_arquivo, "wb+");
+    if (indice_s_chave == NULL)
+    {
+        perror("Erro ao criar o arquivo indice_s_chave");
+        exit(EXIT_FAILURE); // Finaliza o programa em caso de erro
+    }
+
+    // Aqui você pode continuar com o processo de inicialização do novo arquivo,
+    // se necessário, como escrever cabeçalhos ou iniciar outras variáveis.
+    
+    // Fechar o arquivo após a criação
+    fclose(indice_s_chave);
+}
+
 void recriar_indice_secundario(FILE *indice_s_nome, FILE *indice_s_chave, FILE *indice_p, FILE *out)
 {
-    secundaria_nomes vetor_nomes[50]; // Vetor para armazenar nomes de forma ordenada
-    secundaria_nomes elementos_nome;
-    secundaria_chaves vetor_chaves[50];
-    secundaria_chaves elementos_chave;
+    secundaria_element vetor_elements[50]; // Vetor para armazenar os elementos
+    secundaria_element element;
 
     fseek(indice_s_nome, sizeof(int), SEEK_SET); // Movendo ponteiro no arquivo de nomes (se houver um cabeçalho)
     fseek(out, sizeof(int), SEEK_SET);           // Movendo ponteiro no arquivo de registros
 
-    char registro[120];
-    char nome[256];
+    char id[4];             // Aumentado para 4 bytes (3 caracteres + terminador '\0')
+    char sigla[4];          // Aumentado para 4 bytes (3 caracteres + terminador '\0')
+    char buffer_hashtag[1]; // Buffer temporário para ignorar os '#'
 
-    int byte_out_atual = ftell(out);            // Pega a posição atual no arquivo 'out'
-    int tam = pegar_tamanho_reg(out, registro); // Função que lê o tamanho do registro e retorna o registro lido
-
+    int byte_out_atual = ftell(out); // Pega a posição atual no arquivo 'out'
+    int tam;
     int num_nomes = 0; // Contador de nomes no vetor
 
     // Processar cada registro no arquivo 'out'
-    while (tam > 0)
+    while (fread(&tam, sizeof(int), 1, out))
     {
-        printf("\nENTROU NO WHILE");
-        // Volta o ponteiro para o início do registro para processar
-        fseek(out, byte_out_atual, SEEK_SET);
 
-        // Copiar o registro para uma string temporária para manipulação
-        char temp_registro[120];
-        strcpy(temp_registro, registro);
-
-        // Extraindo o nome do registro (3 campos antes do nome)
-        char *token = strtok(temp_registro, "#"); // ID aluno
-        token = strtok(NULL, "#");                // Sigla da disciplina
-        token = strtok(NULL, "#");                // Nome do aluno
-
-        printf("\n TOKEN: %s", token);
-
-        if (token != NULL)
+        // Ler a chave primária (Código de aluno e Sigla da disciplina)
+        if (fread(id, sizeof(char), 3, out) == 3)
         {
-            strcpy(nome, token); // Copiando o nome extraído para a variável 'nome'
+            id[3] = '\0'; // Adiciona o terminador de string
         }
         else
         {
-            break; // Se não houver nome, encerra o laço
+            printf("\nErro ao ler o id.");
         }
 
-        
+        fread(buffer_hashtag, sizeof(char), 1, out); // Ignorar o '#'
 
-        // Insere o nome no vetor na posição correta (permitindo duplicatas)
-        int i = 0, j;
-        while (i < num_nomes && strcmp(vetor_nomes[i].nome, nome) < 0)
+        if (fread(sigla, sizeof(char), 3, out) == 3)
         {
+            sigla[3] = '\0'; // Adiciona o terminador de string
+        }
+        else
+        {
+            printf("\nErro ao ler a sigla.");
+        }
+
+        // Concatenar id e sigla em chave temporária
+        char temp_chave[7] = ""; // Inicializando temp_chave como string vazia
+
+        strcpy(temp_chave, id);    // Copia o id para temp_chave
+        strcat(temp_chave, sigla); // Concatena sigla em temp_chave
+
+        strcpy(element.chave, temp_chave); // Copia o resultado concatenado para element.chave
+
+        // Ler e processar o nome
+        fread(buffer_hashtag, sizeof(char), 1, out); // Ignorar o '#'
+
+        char temp_registro[51];
+        fread(temp_registro, sizeof(char), 50, out); // Lê até 50 caracteres para o nome
+        temp_registro[50] = '\0';                    // Garante o terminador nulo
+
+        // Separar o nome até o primeiro '#'
+        char *tk = strtok(temp_registro, "#");
+
+        // Limpa a variável element.nome antes de copiar o nome
+        memset(element.nome, '\0', sizeof(element.nome)); // Preenche element.nome com '\0'
+
+        // Copia o nome para element.nome
+        strcpy(element.nome, tk);
+
+        // Inserir o elemento no vetor de forma ordenada
+        inserir_ordenado(vetor_elements, element, &num_nomes);
+
+        byte_out_atual += tam + sizeof(int);
+        fseek(out, byte_out_atual, SEEK_SET);
+    }
+
+    // Após o while, o vetor 'vetor_elements' contém os elementos ordenados por nome
+    printf("\nVetor de nomes ordenado:");
+    for (int i = 0; i < num_nomes; i++)
+    {
+        printf("\nElemento %d: Nome=%s / Chave=%s", i, vetor_elements[i].nome, vetor_elements[i].chave);
+    }
+
+    //---------- OPERAÇÕES PARA GRAVAR NOS ARQUIVOS ----------
+    // Reinicializando os arquivos para garantir que sobrescrevam o conteúdo antigo
+    recriar_indice_chave("indice_s_chave.bin");
+
+    // Cabeçalho indicando arquivo desatualizado
+    int cabecalho = 0;
+    fwrite(&cabecalho, sizeof(int), 1, indice_s_nome);
+
+    // Processamento do vetor ordenado
+    fseek(indice_s_nome, sizeof(int), SEEK_SET); // Ignora o cabeçalho
+    rewind(indice_s_chave); // Reinicia para o início do arquivo de chaves
+
+    for (int i = 0; i < num_nomes;)
+    {
+        // Inicializa o byte da última chave para o nome atual
+        int ultimo_byte_chave = -1;
+
+        // Processa todas as ocorrências do mesmo nome
+        int i_inicio = i;
+        while (i < num_nomes && strcmp(vetor_elements[i_inicio].nome, vetor_elements[i].nome) == 0)
+        {
+            // Pega a posição atual no arquivo de chaves para gravar a próxima chave
+            fseek(indice_s_chave, 0, SEEK_END);
+            int byte_atual = ftell(indice_s_chave);
+
+            // Grava a chave no arquivo de chaves
+            fwrite(vetor_elements[i].chave, sizeof(char), sizeof(vetor_elements[i].chave), indice_s_chave);
+
+            // Atualiza o ponteiro para a chave anterior (ou -1 se for a última)
+            fwrite(&ultimo_byte_chave, sizeof(int), 1, indice_s_chave);
+
+            // Atualiza o ponteiro do último byte de chave para a próxima iteração
+            ultimo_byte_chave = byte_atual;
+
             i++;
         }
 
-        // Move os elementos para a direita para abrir espaço para o novo nome
-        for (j = num_nomes; j > i; j--)
-        {
-            vetor_nomes[j] = vetor_nomes[j - 1];
-        }
-
-        // Insere o novo nome na posição correta
-        strcpy(vetor_nomes[i].nome, nome);
-        vetor_nomes[i].byte_lista_invertida = -1; // O byte da lista invertida será atualizado posteriormente
-        num_nomes++;
-
-        // Avança o ponteiro para o próximo registro no arquivo 'out'
-        byte_out_atual += sizeof(int) + tam;    // Atualiza o byte offset
-        tam = pegar_tamanho_reg(out, registro); // Lê o próximo registro
+        // Após gravar todas as chaves do nome atual, gravar o nome e o byte da última chave no arquivo de nomes
+        fwrite(vetor_elements[i_inicio].nome, sizeof(char), sizeof(vetor_elements[i_inicio].nome), indice_s_nome);
+        fwrite(&ultimo_byte_chave, sizeof(int), 1, indice_s_nome);
     }
-    printf("\nnum_nomes: %d", num_nomes);
 
-    // Imprimindo os nomes do vetor em ordem crescente (incluindo repetidos)
-    printf("Nomes no vetor (em ordem alfabética):\n");
-    for (int i = 0; i < num_nomes; i++)
-    {
-        printf("%s\n", vetor_nomes[i].nome); // Imprime cada nome no vetor
-    }
+    // Atualizar o cabeçalho do arquivo de nomes para 1 (arquivo atualizado)
+    cabecalho = 1;
+    fseek(indice_s_nome, 0, SEEK_SET);
+    fwrite(&cabecalho, sizeof(int), 1, indice_s_nome);
+
+    rewind(indice_s_chave);
 }
 
 void busca_s_registro(FILE *indice_s_nome, FILE *indice_s_chave, FILE *busca_secundaria, FILE *indice_p, FILE *busca_s_aux, FILE *out)
@@ -378,6 +471,10 @@ void busca_s_registro(FILE *indice_s_nome, FILE *indice_s_chave, FILE *busca_sec
     {
         recriar_indice_secundario(indice_s_nome, indice_s_chave, indice_p, out);
     }
+    rewind(indice_s_chave);
+    rewind(indice_s_nome);
+    rewind(indice_p);
+    rewind(out);
 }
 
 int main()
