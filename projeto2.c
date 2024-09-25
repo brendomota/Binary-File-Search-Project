@@ -496,11 +496,6 @@ void busca_s_registro(FILE *indice_s_nome, FILE *indice_s_chave, FILE *busca_sec
             }
             break; // Sai do loop se o nome foi encontrado
         }
-        else
-        {
-            // Se a chave não foi encontrada, pular o deslocamento do índice
-            fread(&byte_chave, sizeof(int), 1, indice_s_nome); // Pula o deslocamento
-        }
     }
 
     if (!encontrado)
