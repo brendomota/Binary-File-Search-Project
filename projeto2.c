@@ -176,6 +176,65 @@ void recriar_indice(FILE *indice_p, FILE *out)
 }
 
 /*--------FUNÇÃO PARA BUSCA PRIMÁRIA UM REGISTRO---------*/
+void buscar_registro(FILE *indice_p, FILE *out, const char *pegar_chave)
+{
+    int deslocamento;
+    char chave[6];
+
+    // Ler o cabeçalho do índice
+    int cabecalho_indice;
+    fread(&cabecalho_indice, sizeof(int), 1, indice_p);
+
+    int flag_encontrou = 0;
+
+    // Verificar se o índice está atualizado
+    if (cabecalho_indice == 1)
+    {
+        fseek(indice_p, sizeof(int), SEEK_SET);
+    }
+    else
+    {
+        recriar_indice(indice_p, out);
+        fseek(indice_p, sizeof(int), SEEK_SET);
+    }
+
+    // Buscar a chave no índice
+    while (fread(&chave, sizeof(char), 6, indice_p))
+    {
+        chave[6] = '\0';
+        if (strcmp(pegar_chave, chave) == 0)
+        {
+            fread(&deslocamento, sizeof(int), 1, indice_p);
+            flag_encontrou = 1;
+            break;
+        }
+        fread(&deslocamento, sizeof(int), 1, indice_p);
+    }
+
+    // Se a chave não foi encontrada
+    if (flag_encontrou == 0)
+    {
+        printf("\nA chave nao foi encontrada");
+    }
+    else
+    {
+        // Se a chave foi encontrada, buscar o registro
+        fseek(out, deslocamento, SEEK_SET);
+        char registro[120];
+        int tam_reg = pegar_tamanho_reg(out, registro);
+        char *pch;
+        pch = strtok(registro, "#");
+
+        printf("\nRegistro encontrado:\n");
+        while (pch != NULL)
+        {
+            printf("%s#", pch);
+            pch = strtok(NULL, "#");
+        }
+        printf("\n");
+    }
+}
+
 void busca_p_registro(FILE *indice_p, FILE *busca_primaria, FILE *busca_p_aux, FILE *out)
 {
     rewind(indice_p);
@@ -184,100 +243,17 @@ void busca_p_registro(FILE *indice_p, FILE *busca_primaria, FILE *busca_p_aux, F
     char pegar_chave[20];
     int byte_busca_p_aux;
     busca_p busca;
+
+    // Ler o byte do arquivo auxiliar
     fread(&byte_busca_p_aux, sizeof(int), 1, busca_p_aux);
     fseek(busca_primaria, byte_busca_p_aux, 0);
     fread(&busca, sizeof(busca), 1, busca_primaria);
     sprintf(pegar_chave, "%s%s", busca.id_aluno, busca.sigla_disc);
 
-    int deslocamento;
-    int cabecalho_indice;
-    char chave[6];
+    // Buscar o registro
+    buscar_registro(indice_p, out, pegar_chave);
 
-    fread(&cabecalho_indice, sizeof(int), 1, indice_p);
-
-    int flag_encontrou = 0;
-    if (cabecalho_indice == 1)
-    {
-        fseek(indice_p, sizeof(int), SEEK_SET);
-        while (fread(&chave, sizeof(char), 6, indice_p))
-        {
-            chave[6] = '\0';
-            if (strcmp(pegar_chave, chave) == 0)
-            {
-                fread(&deslocamento, sizeof(int), 1, indice_p);
-                flag_encontrou = 1;
-                break;
-            }
-            fread(&deslocamento, sizeof(int), 1, indice_p);
-        }
-
-        if (flag_encontrou == 0)
-        {
-            printf("\nA chave nao foi encontrada");
-        }
-
-        else
-        {
-            fseek(out, deslocamento, SEEK_SET);
-
-            char registro[120];
-            int tam_reg = pegar_tamanho_reg(out, registro);
-            char *pch;
-            pch = strtok(registro, "#");
-
-            printf("\nRegistro encontrado:\n");
-            while (pch != NULL)
-            {
-                printf("%s#", pch);
-                // strcpy(teste,pch);
-                // printf("%s\n",teste);
-                pch = strtok(NULL, "#");
-            }
-            printf("\n");
-        }
-    }
-    else
-    {
-        recriar_indice(indice_p, out);
-
-        fseek(indice_p, sizeof(int), SEEK_SET);
-        while (fread(&chave, sizeof(char), 6, indice_p))
-        {
-            chave[6] = '\0';
-            if (strcmp(pegar_chave, chave) == 0)
-            {
-                fread(&deslocamento, sizeof(int), 1, indice_p);
-                flag_encontrou = 1;
-                break;
-            }
-            fread(&deslocamento, sizeof(int), 1, indice_p);
-        }
-
-        if (flag_encontrou == 0)
-        {
-            printf("\nA chave nao foi encontrada");
-        }
-
-        else
-        {
-            fseek(out, deslocamento, SEEK_SET);
-
-            char registro[120];
-            int tam_reg = pegar_tamanho_reg(out, registro);
-            char *pch;
-            pch = strtok(registro, "#");
-
-            printf("\nRegistro encontrado:\n");
-            while (pch != NULL)
-            {
-                printf("%s#", pch);
-                // strcpy(teste,pch);
-                // printf("%s\n",teste);
-                pch = strtok(NULL, "#");
-            }
-            printf("\n");
-        }
-    }
+    // Atualizar o byte do arquivo auxiliar
     rewind(busca_p_aux);
     byte_busca_p_aux += 8;
     fwrite(&byte_busca_p_aux, sizeof(int), 1, busca_p_aux);
@@ -316,7 +292,6 @@ void recriar_indice_chave(const char *nome_arquivo)
     // Tentar remover o arquivo existente
     remove(nome_arquivo);
 
-    
     // Criar um novo arquivo "indice_s_chave"
     FILE *indice_s_chave = fopen(nome_arquivo, "wb+");
     if (indice_s_chave == NULL)
@@ -327,7 +302,7 @@ void recriar_indice_chave(const char *nome_arquivo)
 
     // Aqui você pode continuar com o processo de inicialização do novo arquivo,
     // se necessário, como escrever cabeçalhos ou iniciar outras variáveis.
-    
+
     // Fechar o arquivo após a criação
     fclose(indice_s_chave);
 }
@@ -421,7 +396,7 @@ void recriar_indice_secundario(FILE *indice_s_nome, FILE *indice_s_chave, FILE *
 
     // Processamento do vetor ordenado
     fseek(indice_s_nome, sizeof(int), SEEK_SET); // Ignora o cabeçalho
-    rewind(indice_s_chave); // Reinicia para o início do arquivo de chaves
+    rewind(indice_s_chave);                      // Reinicia para o início do arquivo de chaves
 
     for (int i = 0; i < num_nomes;)
     {
@@ -466,15 +441,77 @@ void busca_s_registro(FILE *indice_s_nome, FILE *indice_s_chave, FILE *busca_sec
     int cabecalho_s;
     rewind(indice_s_nome);
     fread(&cabecalho_s, sizeof(int), 1, indice_s_nome);
-    rewind(indice_s_nome);
+
     if (cabecalho_s == 0)
     {
         recriar_indice_secundario(indice_s_nome, indice_s_chave, indice_p, out);
     }
-    rewind(indice_s_chave);
-    rewind(indice_s_nome);
-    rewind(indice_p);
-    rewind(out);
+
+    // Ler o byte atual do arquivo busca_s_aux
+    int byte_busca_s_aux;
+    fread(&byte_busca_s_aux, sizeof(int), 1, busca_s_aux);
+
+    // Calcular o byte correspondente ao nome a ser lido em busca_secundaria
+    char nome[50];
+    fseek(busca_secundaria, byte_busca_s_aux, SEEK_SET);
+    fread(nome, sizeof(char), 50, busca_secundaria);
+
+    // Buscar o nome no índice
+    char chave[50]; // Para armazenar a chave do nome
+    int byte_chave;
+    int encontrado = 0;
+
+    fseek(indice_s_nome, sizeof(int), SEEK_SET); // Pular o cabeçalho
+    while (fread(chave, sizeof(char), 50, indice_s_nome) == 50)
+    {
+        // Ler o byte onde a chave está no índice
+        fread(&byte_chave, sizeof(int), 1, indice_s_nome);
+        printf("\nbyte_chave: %d", byte_chave);
+
+        if (strcmp(nome, chave) == 0)
+        { // Nome encontrado
+            encontrado = 1;
+            // Buscar registros correspondentes no arquivo de chaves
+            while (byte_chave != -1)
+            { // Continue até encontrar -1
+                fseek(indice_s_chave, byte_chave, SEEK_SET);
+
+                char chave_secundaria[7]; // Chave do registro
+                fread(chave_secundaria, sizeof(char), 7, indice_s_chave);
+                chave_secundaria[6] = '\0'; // Adiciona o terminador de string
+
+                int deslocamento;
+                fread(&deslocamento, sizeof(int), 1, indice_s_chave);
+
+                // Imprimir o registro correspondente no arquivo out
+                fseek(indice_s_chave, deslocamento, SEEK_SET);
+
+                buscar_registro(indice_p, out, chave_secundaria);
+
+                byte_chave = deslocamento; // Atualiza para a próxima chave
+                if (deslocamento == -1)
+                { // Se for -1, terminamos a busca
+                    break;
+                }
+            }
+            break; // Sai do loop se o nome foi encontrado
+        }
+        else
+        {
+            // Se a chave não foi encontrada, pular o deslocamento do índice
+            fread(&byte_chave, sizeof(int), 1, indice_s_nome); // Pula o deslocamento
+        }
+    }
+
+    if (!encontrado)
+    {
+        printf("\nO nome \"%s\" não foi encontrado no índice.\n", nome);
+    }
+
+    // Atualiza o byte no arquivo busca_s_aux
+    byte_busca_s_aux += 50; // Aumenta 50 bytes para o próximo nome
+    fseek(busca_s_aux, 0, SEEK_SET);
+    fwrite(&byte_busca_s_aux, sizeof(int), 1, busca_s_aux);
 }
 
 int main()
