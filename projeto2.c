@@ -448,8 +448,10 @@ void busca_s_registro(FILE *indice_s_nome, FILE *indice_s_chave, FILE *busca_sec
     }
 
     // Ler o byte atual do arquivo busca_s_aux
+    rewind(busca_s_aux);
     int byte_busca_s_aux;
     fread(&byte_busca_s_aux, sizeof(int), 1, busca_s_aux);
+    rewind(busca_s_aux);
 
     // Calcular o byte correspondente ao nome a ser lido em busca_secundaria
     char nome[50];
@@ -504,9 +506,10 @@ void busca_s_registro(FILE *indice_s_nome, FILE *indice_s_chave, FILE *busca_sec
     }
 
     // Atualiza o byte no arquivo busca_s_aux
-    byte_busca_s_aux += 50; // Aumenta 50 bytes para o próximo nome
-    fseek(busca_s_aux, 0, SEEK_SET);
+    byte_busca_s_aux = byte_busca_s_aux + 50; // Aumenta 50 bytes para o próximo nome
+    rewind(busca_s_aux);
     fwrite(&byte_busca_s_aux, sizeof(int), 1, busca_s_aux);
+    rewind(busca_s_aux);
 }
 
 int main()
@@ -752,8 +755,12 @@ int main()
     fclose(in_aux);
     fclose(busca_primaria);
     fclose(busca_p_aux);
+    fclose(busca_secundaria);
+    fclose(busca_s_aux);
     fclose(out);
     fclose(indice_p);
+    fclose(indice_s_nome);
+    fclose(indice_s_chave);
 
     return 0;
 }
