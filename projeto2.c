@@ -379,13 +379,6 @@ void recriar_indice_secundario(FILE *indice_s_nome, FILE *indice_s_chave, FILE *
         fseek(out, byte_out_atual, SEEK_SET);
     }
 
-    // Após o while, o vetor 'vetor_elements' contém os elementos ordenados por nome
-    printf("\nVetor de nomes ordenado:");
-    for (int i = 0; i < num_nomes; i++)
-    {
-        printf("\nElemento %d: Nome=%s / Chave=%s", i, vetor_elements[i].nome, vetor_elements[i].chave);
-    }
-
     //---------- OPERAÇÕES PARA GRAVAR NOS ARQUIVOS ----------
     // Reinicializando os arquivos para garantir que sobrescrevam o conteúdo antigo
     recriar_indice_chave("indice_s_chave.bin");
@@ -468,7 +461,6 @@ void busca_s_registro(FILE *indice_s_nome, FILE *indice_s_chave, FILE *busca_sec
     {
         // Ler o byte onde a chave está no índice
         fread(&byte_chave, sizeof(int), 1, indice_s_nome);
-        printf("\nbyte_chave: %d", byte_chave);
 
         if (strcmp(nome, chave) == 0)
         { // Nome encontrado
@@ -743,6 +735,9 @@ int main()
 
         if (opcao == 4)
         {
+            //Caso as funções de recriar devam ser feitas na opção 4
+            recriar_indice(indice_p, out);
+            recriar_indice_secundario(indice_s_nome, indice_s_chave, indice_p, out);
             break;
         }
 
